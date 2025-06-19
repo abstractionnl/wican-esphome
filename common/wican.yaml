@@ -1,0 +1,192 @@
+esp32:
+  variant: ESP32C3
+  board: esp32-c3-devkitm-1
+  framework:
+    type: arduino
+
+output:
+  - platform: gpio
+    pin: 7
+    id: output_led_power
+    inverted: false
+  - platform: gpio
+    pin: 8
+    id: output_led_connected
+    inverted: true
+  - platform: gpio
+    pin: 9
+    id: output_led_active
+    inverted: true
+
+light:
+  - platform: binary
+    id: status_led_connected
+    output: output_led_connected
+    effects:
+      - strobe:
+          name: wifi_disconnected
+          colors:
+            - state: true
+              duration: 500ms
+            - state: false
+              duration: 1500ms
+      - strobe:
+          name: api_disconnected
+          colors:
+            - state: true
+              duration: 1s
+            - state: false
+              duration: 1s
+  - platform: binary
+    id: status_led_power
+    output: output_led_power
+    effects:
+      - strobe:
+          name: not_polling
+          colors:
+            - state: true
+              duration: 500ms
+            - state: false
+              duration: 1500ms
+  - platform: binary
+    id: status_led_active
+    output: output_led_active
+
+canbus:
+  - platform: esp32_can
+    id: can_bus
+    tx_pin: 0
+    rx_pin: 3
+    can_id: 0
+    rx_queue_len: 100
+    bit_rate: 500kbps
+
+script:
+  - id: update_connection_led
+    then:
+      if:
+        condition:
+          wifi.connected:
+        then:
+          - if:
+              condition:
+                mqtt.connected:
+              then:
+                - light.turn_on:
+                    id: status_led_connected
+              else:
+                - light.turn_on:
+                    id: status_led_connected
+                    effect: api_disconnected
+        else:
+          - light.turn_on:
+              id: status_led_connected
+              effect: wifi_disconnected
+  - id: set_polling_status
+    mode: restart
+    then:
+      - if:
+          condition: { binary_sensor.is_on: status }
+          then:
+            - if:
+                condition: { switch.is_off: polling_enabled }
+                then:
+                  - switch.turn_on: polling_enabled
+          else:
+            - delay: 5min
+            - switch.turn_off: polling_enabled
+
+switch:
+  - platform: gpio
+    id: can_enabled
+    pin: 6
+    inverted: true
+    restore_mode: ALWAYS_ON
+  - platform: template
+    name: "Polling enabled"
+    id: polling_enabled
+    optimistic: true
+    turn_on_action:
+      - component.resume: obd_component
+    turn_off_action:
+      - component.suspend: obd_component
+    on_turn_on:
+      - light.turn_on:
+          id: status_led_power
+      - script.execute: set_polling_status
+    on_turn_off:
+      - light.turn_on:
+          id: status_led_power
+          effect: not_polling
+
+sensor:
+  - platform: adc
+    pin: 4
+    name: "Battery voltage"
+    id: battery_voltage
+    update_interval: 10s
+    attenuation: 12db
+    accuracy_decimals: 1
+    entity_category: diagnostic
+    device_class: voltage
+    state_class: measurement
+    samples: 5
+    filters:
+      - multiply: 7.25
+      - offset: 0.2
+
+binary_sensor:
+  - platform: template
+    name: "Status"
+    id: status
+    lambda: return id(battery_voltage).state >= 12.9;
+    device_class: power
+    entity_category: diagnostic
+    on_state:
+      then:
+        - script.execute: set_polling_status
+        - if:
+            condition:
+              not:
+                wifi.connected:
+            then:
+              lambda: id(the_wifi).retry_connect();
+
+obd:
+  id: obd_component
+  canbus_id: can_bus
+
+wifi:
+  id: the_wifi
+  fast_connect: True
+  reboot_timeout: 0s
+  on_connect:
+    then:
+      - script.execute: update_connection_led
+  on_disconnect:
+    then:
+      - script.execute: update_connection_led
+
+api:
+  reboot_timeout: 0s
+
+mqtt:
+  broker: 192.168.1.2
+  username: !secret wican_mqtt_user
+  password: !secret wican_mqtt_password
+  reboot_timeout: 0s
+  discovery_unique_id_generator: mac
+  discovery_object_id_generator: device_name
+  on_connect:
+    then:
+      - script.execute: update_connection_led
+  on_disconnect:
+    then:
+      - script.execute: update_connection_led
+
+external_components:
+  - source:
+      type: git
+      url: https://github.com/abstractionnl/esphome
+      ref: obd_component
+    components: [obd]

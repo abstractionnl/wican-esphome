@@ -1,0 +1,192 @@
+substitutions:
+  device_name: wican-niro
+  friendly_name: "Wican Niro"
+
+packages:
+  common: !include common/common.yaml
+  wican: !include common/wican.yaml
+
+obd:
+  pids:
+    - can_id: 0x7E4
+      pid: 0x2101
+      id: bms_1
+      reply_length: 72
+    - can_id: 0x7E4
+      pid: 0x2105
+      id: bms_5
+      reply_length: 56
+    - can_id: 0x7c6
+      pid: 0x22b002
+      interval: 30s
+      id: odo
+      reply_length: 16
+    - can_id: 0x7a0
+      pid: 0x22c00b
+      interval: 30s
+      id: tpms
+      reply_length: 24
+
+sensor:
+  - platform: obd
+    pid_id: bms_1
+    index: 9
+    filters:
+      - multiply: 0.5
+    id: soc_bms
+    name: 'Battery BMS'
+    unit_of_measurement: '%'
+    accuracy_decimals: 1
+    device_class: battery
+    state_class: measurement
+  - platform: obd
+    pid_id: bms_1
+    index: [ 15, 17 ]
+    signed: true
+    filters:
+      - multiply: 0.1
+    id: hv_battery_current
+    name: 'HV Battery Current'
+    unit_of_measurement: 'A'
+    accuracy_decimals: 1
+    device_class: current
+    state_class: measurement
+    on_value:
+      then:
+        component.update: energy_draw
+  - platform: obd
+    pid_id: bms_1
+    index: [ 18, 19 ]
+    filters:
+      - multiply: 0.1
+    id: hv_battery_voltage
+    name: 'HV Battery Voltage'
+    unit_of_measurement: 'V'
+    accuracy_decimals: 1
+    device_class: voltage
+    state_class: measurement
+  - platform: obd
+    pid_id: bms_1
+    index: [47, 49, 50, 51]
+    filters:
+      - multiply: 0.1
+    id: cec
+    name: 'Cumulative Energy Charged'
+    unit_of_measurement: 'kWh'
+    accuracy_decimals: 1
+    device_class: energy
+    state_class: total_increasing
+  - platform: obd
+    pid_id: bms_1
+    index: [52, 53, 54, 55]
+    filters:
+      - multiply: 0.1
+    id: ced
+    name: 'Cumulative Energy Discharged'
+    unit_of_measurement: 'kWh'
+    accuracy_decimals: 1
+    device_class: energy
+    state_class: total_increasing
+  - platform: obd
+    pid_id: bms_5
+    index: [44, 45]
+    filters:
+      - multiply: 0.1
+    id: soh
+    name: 'State of Health'
+    unit_of_measurement: '%'
+    accuracy_decimals: 1
+    state_class: measurement
+  - platform: obd
+    pid_id: bms_5
+    index: 47
+    filters:
+      - multiply: 0.5
+    id: soc_display
+    name: 'Battery'
+    unit_of_measurement: '%'
+    accuracy_decimals: 1
+    device_class: battery
+    state_class: measurement  
+  - platform: obd
+    pid_id: odo
+    index: [12, 13, 14]
+    id: odometer
+    name: 'Odometer'
+    unit_of_measurement: 'km'
+    accuracy_decimals: 0    
+    device_class: distance
+    state_class: total_increasing
+  - platform: obd
+    pid_id: tpms
+    index: 10
+    filters:
+      - multiply: 0.2
+      - multiply: 0.0689476
+    id: tpms_fl
+    name: 'Tire Pressure Front Left'
+    unit_of_measurement: 'bar'
+    accuracy_decimals: 1    
+    device_class: pressure
+    state_class: measurement
+  - platform: obd
+    pid_id: tpms
+    index: 14
+    filters:
+      - multiply: 0.2
+      - multiply: 0.0689476
+    id: tpms_fr
+    name: 'Tire Pressure Front Right'
+    unit_of_measurement: 'bar'
+    accuracy_decimals: 1    
+    device_class: pressure
+    state_class: measurement
+  - platform: obd
+    pid_id: tpms
+    index: 19
+    filters:
+      - multiply: 0.2
+      - multiply: 0.0689476
+    id: tpms_rl
+    name: 'Tire Pressure Rear Left'
+    unit_of_measurement: 'bar'
+    accuracy_decimals: 1    
+    device_class: pressure
+    state_class: measurement
+  - platform: obd
+    pid_id: tpms
+    index: 23
+    filters:
+      - multiply: 0.2
+      - multiply: 0.0689476
+    id: tpms_rr
+    name: 'Tire Pressure Rear Right'
+    unit_of_measurement: 'bar'
+    accuracy_decimals: 1    
+    device_class: pressure
+    state_class: measurement
+  - platform: template
+    id: energy_draw
+    name: 'Energy Draw'
+    unit_of_measurement: 'kW'
+    accuracy_decimals: 2    
+    device_class: power
+    state_class: measurement
+    lambda: !lambda return (id(hv_battery_current).state * id(hv_battery_voltage).state)/1000;
+    update_interval: never
+
+binary_sensor:
+  - platform: obd
+    pid_id: bms_1
+    index: 14
+    mask: 0x80
+    name: 'Charger connected'
+    id: charger_connected
+    device_class: plug
+  - platform: obd
+    pid_id: bms_1
+    index: 14
+    mask: 0x83
+    name: 'Charging'
+    id: charging
+    device_class: battery_charging

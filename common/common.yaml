@@ -1,0 +1,45 @@
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  domain: ".lan"
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_key
+
+# Enable OTA updates
+ota:
+  - platform: esphome
+    password: !secret ota_key
+
+# Restart buttons
+button:
+  - platform: restart
+    name: Restart
+    entity_category: diagnostic
+  - platform: safe_mode
+    name: Safe Mode Boot
+    entity_category: diagnostic
+
+# Add some diagnostic sensors
+sensor:
+  - platform: uptime
+    type: timestamp
+    name: Uptime
+    entity_category: diagnostic
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: IP Address
+
+# Enable logging
+logger:
+  baud_rate: 0
+
+time:
+  - platform: sntp
